@@ -1,6 +1,7 @@
 #pragma once
 
 #include "field_type.hpp"
+#include "type_encoder.hpp"
 
 #include <boost/endian/conversion.hpp>
 
@@ -28,7 +29,7 @@ public:
     return t.c_str();
   }
 
-  const char* c_str(const std::string& t) {
+  const char* data(const std::string& t) {
     return t.c_str();
   }
 };
@@ -52,7 +53,7 @@ public:
     return t;
   }
 
-  const char* c_str(const value_t& t) {
+  const char* data(const value_t& t) {
     return t;
   }
 };
@@ -75,7 +76,7 @@ public:
     return boost::endian::native_to_big(t);
   }
 
-  const char* c_str(const T& t) {
+  const char* data(const T& t) {
     return reinterpret_cast<const char*>(&t);
   }
 };
@@ -106,7 +107,7 @@ public:
     return v;
   }
 
-  const char* c_str(const T& t) {
+  const char* data(const T& t) {
     return reinterpret_cast<const char*>(&t);
   }
 };

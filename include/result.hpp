@@ -6,7 +6,7 @@
 #include <libpq-fe.h>
 
 #include <cassert>
-#include <cstdint>
+#include <cstring>
 #include <string>
 
 namespace postgrespp {

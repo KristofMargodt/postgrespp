@@ -2,11 +2,13 @@
 
 #include "result.hpp"
 
+#include <libpq-fe.h>
+
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/buffer.hpp>
 #include <boost/asio/error.hpp>
 
-#include <libpq-fe.h>
+#include <memory>
 #include <stdexcept>
 
 namespace postgrespp {

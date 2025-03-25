@@ -1,7 +1,8 @@
 #pragma once
 
-#include "work.hpp"
+#include "basic_connection.hpp"
 #include "query.hpp"
+#include "work.hpp"
 
 #include <boost/asio/async_result.hpp>
 

@@ -14,7 +14,7 @@ create_value_holders(Params&&... params) {
 
 template <class... Params>
 std::array<const char*, sizeof...(Params)> value_array(Params&&... params) {
-  return {typename type_encoder<Params>::encoder_t{}.c_str(params)...};
+  return {typename type_encoder<Params>::encoder_t{}.data(params)...};
 }
 
 template <class... Params>

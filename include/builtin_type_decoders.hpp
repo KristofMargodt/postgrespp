@@ -1,5 +1,7 @@
 #pragma once
 
+#include "type_decoder.hpp"
+
 #include <boost/endian/buffers.hpp>
 
 #include <string>

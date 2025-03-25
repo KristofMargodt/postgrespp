@@ -3,7 +3,6 @@
 #include "field_type.hpp"
 #include "query.hpp"
 #include "socket_operations.hpp"
-#include "type_encoder.hpp"
 #include "utility.hpp"
 
 #include <cassert>

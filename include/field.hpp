@@ -4,7 +4,6 @@
 
 #include <libpq-fe.h>
 
-#include <cstdint>
 #include <stdexcept>
 
 namespace postgrespp {

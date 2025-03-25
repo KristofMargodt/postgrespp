@@ -30,7 +30,7 @@ public:
     return std::to_string(t);
   }
 
-  const char* c_str(const value_t& t) {
+  const char* data(const value_t& t) {
     return t.c_str();
   }
 };

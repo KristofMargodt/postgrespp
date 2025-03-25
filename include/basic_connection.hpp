@@ -3,7 +3,6 @@
 #include "basic_transaction.hpp"
 #include "query.hpp"
 #include "socket_operations.hpp"
-#include "utility.hpp"
 
 #include <libpq-fe.h>
 

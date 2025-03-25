@@ -4,6 +4,8 @@ project(postgrespp CXX)
 
 add_subdirectory(src)
 
+option(POSTGRESPP_BUILD_TESTS "Build tests" OFF)
+
 if(POSTGRESPP_BUILD_TESTS)
   add_subdirectory(test)
 endif()

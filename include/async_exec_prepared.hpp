@@ -1,5 +1,6 @@
 #pragma once
 
+#include "basic_connection.hpp"
 #include "work.hpp"
 #include "statement_name.hpp"
 
