@@ -8,6 +8,9 @@
 #include <cassert>
 #include <cstring>
 #include <string>
+#if (defined(__cplusplus) && __cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+#include <ranges>
+#endif
 
 namespace postgrespp {
 
@@ -104,5 +107,9 @@ public:
 private:
   PGresult* res_;
 };
+
+#if (defined(__cplusplus) && __cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+static_assert(std::ranges::range<result>);
+#endif
 
 }

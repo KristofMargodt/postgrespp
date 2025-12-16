@@ -13,8 +13,11 @@ class result_iterator
 public:
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;
+  using value_type = row const;
 
 public:
+  result_iterator() = default;
+
   result_iterator(PGresult* res)
     : result_iterator(res, 0) {
   }
@@ -24,7 +27,7 @@ public:
     , cur_row_{row} {
   }
 
-  const row operator*() {
+  const row operator*() const {
     return {res_, cur_row_};
   }
 
@@ -104,8 +107,12 @@ public:
   }
 
 private:
-  PGresult* const res_;
+  PGresult*  res_;
   size_type cur_row_;
 };
+
+#if (defined(__cplusplus) && __cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+static_assert(std::input_iterator<result_iterator>);
+#endif
 
 }
