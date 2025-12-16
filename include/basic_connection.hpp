@@ -53,7 +53,10 @@ public:
     socket_.assign(boost::asio::ip::tcp::v4(), socket);
   }
 
-  ~basic_connection();
+  ~basic_connection() {
+    if (c_)
+      PQfinish(c_);
+  }
 
   basic_connection(basic_connection const&) = delete;
 
@@ -124,7 +127,10 @@ public:
   const char* last_error_message() const { return PQerrorMessage(underlying_handle()); }
 
 private:
-  int status() const;
+  int status() const
+  {
+    return PQstatus(c_);
+  }
 
   basic_connection& connection() { return *this; }
 

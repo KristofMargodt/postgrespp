@@ -18,15 +18,6 @@ std::shared_ptr<std::thread> ioc_thread{
 
 }
 
-basic_connection::~basic_connection() {
-  if (c_)
-    PQfinish(c_);
-}
-
-int basic_connection::status() const {
-  return PQstatus(c_);
-}
-
 auto basic_connection::standalone_ioc() -> io_context_t& {
   return ioc;
 }
