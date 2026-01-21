@@ -147,6 +147,26 @@ public:
     return this->handle_exec_all(std::forward<ResultCallableT>(handler));
   }
 
+  /**
+   * Variant of async_exec_all that is more corouting friendly
+   * instead of caller handler once per result
+   * call handler once per call with multiple results
+   */
+  template <class ResultsCallableT> // void(std::vector<result> )
+  auto async_exec_multi(const query_t& query, ResultsCallableT&& handler) {
+    auto initiation = [this, &query](auto&& handler) mutable {
+      async_exec_all(query, [handler=std::move(handler), Results = std::vector<result>{}](result_t res) mutable {
+        if (!res.done()) {
+          Results.push_back(std::move(res));
+        } else {
+          handler(std::move(Results));
+        }
+      });
+    };
+
+    return boost::asio::async_initiate<ResultsCallableT, void(std::vector<result_t>)>(initiation, std::move(handler));
+  }
+
   template <class ResultCallableT>
   auto commit(ResultCallableT&& handler) {
     const auto initiation = [this](auto&& handler) {
