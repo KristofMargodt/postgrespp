@@ -30,10 +30,6 @@ public:
   using statement_name_t = std::string;
 
 public:
-  basic_connection(const char* const& pgconninfo)
-    : basic_connection{standalone_ioc(), pgconninfo} {
-  }
-
   template <class ExecutorT>
   basic_connection(ExecutorT& exc, const char* const& pgconninfo)
     : socket_{exc} {
@@ -133,8 +129,6 @@ private:
   }
 
   basic_connection& connection() { return *this; }
-
-  io_context_t& standalone_ioc();
 
 private:
   socket_t socket_;
