@@ -5,6 +5,7 @@
 #include <libpq-fe.h>
 
 #include <stdexcept>
+#include <string_view>
 
 namespace postgrespp {
 
@@ -22,6 +23,12 @@ public:
   const field_t operator[](size_type n) const {
     return {res_, row_, n};
   }
+
+  const field_t operator[](std::string_view field_name) const 
+  { // not all string_views, only those that are null-terminated
+    return {res_, row_, PQfnumber(res_, field_name.data())};
+  }
+
 
   const field_t at(size_type n) const {
     if (n >= PQnfields(res_)) throw std::out_of_range{"field n >= size()"};
