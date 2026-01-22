@@ -30,6 +30,7 @@ public:
   };
 
 public:
+  result() { throw std::logic_error("restult() should not be called"); } // compiler needs its existence though for certain concepts
   result(PGresult* const& result) noexcept
     : res_{result} {
   }

@@ -10,15 +10,6 @@
 
 namespace pqxx
 {
-template<> struct string_traits<std::chrono::system_clock::time_point>
-{
-  using TP = std::chrono::system_clock::time_point;
-  using impl_type = int64_t;
-  using impl_traits = string_traits<impl_type>;
-
-  static constexpr bool converts_to_string{true};
-  static constexpr bool converts_from_string{true};
-};
 
 template<>
 struct nullness<std::chrono::system_clock::time_point>
