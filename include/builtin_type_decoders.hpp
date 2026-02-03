@@ -38,6 +38,19 @@ public:
 };
 
 template <>
+class type_decoder<std::string_view, void> {
+public:
+  static constexpr std::size_t min_size = 0;
+  static constexpr std::size_t max_size = std::numeric_limits<std::size_t>::max();
+  static constexpr bool nullable = true;
+
+public:
+  std::string_view from_binary(const char* data, std::size_t length) {
+    return {data, length};
+  }
+};
+
+template <>
 class type_decoder<std::string, void> {
 public:
   static constexpr std::size_t min_size = 0;
