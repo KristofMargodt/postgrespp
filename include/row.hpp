@@ -26,9 +26,13 @@ public:
 
   const field_t operator[](std::string_view field_name) const 
   { // not all string_views, only those that are null-terminated
-    return {res_, row_, PQfnumber(res_, field_name.data())};
+    return {res_, row_, column(field_name)};
   }
 
+  size_t column(std::string_view v) const
+  { // not all string_views, only those that are null-terminated
+    return PQfnumber(res_, v.data());
+  }
 
   const field_t at(size_type n) const {
     if (n >= PQnfields(res_)) throw std::out_of_range{"field n >= size()"};

@@ -93,6 +93,7 @@ public:
   }
 
   size_type size() const { return PQntuples(res_); }
+  bool empty() const { return size() == 0; }
 
   size_type affected_rows() const {
     const auto s = PQcmdTuples(res_);
@@ -106,7 +107,7 @@ public:
   const char* error_message() const { return PQresultErrorMessage(res_); }
 
 private:
-  PGresult* res_;
+  PGresult* res_ = nullptr;
 };
 
 #if (defined(__cplusplus) && __cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
