@@ -82,7 +82,6 @@ inline std::string to_string(std::chrono::duration<int64_t, Period> const value)
       "Attempt to convert null " + std::string{type_name<std::chrono::utc_clock::duration>} +
       " to a string."};
   
-  std::cout << toISO8601(value) << '\n';
   return std::format("{}", toISO8601(value));
 }
 
