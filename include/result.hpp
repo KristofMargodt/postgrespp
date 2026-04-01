@@ -92,6 +92,11 @@ public:
     return (*this)[n];
   }
 
+  size_t column(std::string_view v) const
+  { // not all string_views, only those that are null-terminated
+    return PQfnumber(res_, v.data());
+  }
+
   size_type size() const { return PQntuples(res_); }
   bool empty() const { return size() == 0; }
 
@@ -106,6 +111,20 @@ public:
 
   const char* error_message() const { return PQresultErrorMessage(res_); }
 
+  friend std::ostream& operator<<(std::ostream&os, status_t s)
+  {
+    using enum status_t;
+    switch (s)
+    {
+      case EMPTY_QUERY:  os << "EMPTY_QUERY";  break;
+      case COMMAND_OK:   os << "COMMAND_OK";   break;
+      case TUPLES_OK:    os << "TUPLES_OK";    break;
+      case BAD_RESPONSE: os << "BAD_RESPONSE"; break;
+      case FATAL_ERROR:  os << "FATAL_ERROR";  break;
+      default: os << "Unknown: " << (int)s;
+    }
+    return os;
+  }
 private:
   PGresult* res_ = nullptr;
 };

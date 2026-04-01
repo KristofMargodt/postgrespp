@@ -8,10 +8,16 @@
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/cancel_after.hpp>
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/use_awaitable.hpp>
 
 #include <stdexcept>
 #include <string>
 #include <utility>
+
+using namespace std::literals;
+using boost::asio::use_awaitable;
 
 namespace postgrespp {
 
@@ -31,8 +37,16 @@ public:
 
 public:
   template <class ExecutorT>
+  basic_connection(ExecutorT& exc)
+    : socket_{exc}, c_{nullptr} {}
+
+  template <class ExecutorT>
   basic_connection(ExecutorT& exc, const char* const& pgconninfo)
     : socket_{exc} {
+    connect(pgconninfo);
+  }
+
+  void connect(const char* const pgconninfo) {
     c_ = PQconnectdb(pgconninfo);
 
     if (status() != CONNECTION_OK)
@@ -47,6 +61,33 @@ public:
       throw std::runtime_error{"could not get a valid descriptor"};
 
     socket_.assign(boost::asio::ip::tcp::v4(), socket);
+  }
+
+  void disconnect() {
+    if (socket_.is_open())
+    {
+      socket_.cancel();
+      socket_.release(); // unassign socket that PQfinish will cleanup
+    }
+    if (c_)
+    {
+      PQfinish(c_);
+      c_ = nullptr;
+    }
+  }
+  template <class CompletionTokenT>
+  auto async_connect(const char* const pgconninfo, CompletionTokenT&& handler)
+  {
+    auto initiation = [this, pgconninfo](CompletionTokenT&& handler) -> void {
+      PGconn* const conn = PQconnectStart(pgconninfo);
+      if (!conn) {
+          std::cerr << "PQconnectStart failed: out of memory?\n";
+          return;
+      }
+    };
+
+    return boost::asio::async_initiate<CompletionTokenT, void(boost::system::error_code)>(
+          initiation, std::forward<CompletionTokenT>(handler));
   }
 
   ~basic_connection() {
@@ -105,13 +146,72 @@ public:
 
     auto initiation = [this](auto&& handler) {
       auto w = std::make_shared<txn_t>(*this);
-      w->async_exec("BEGIN",
-          [handler = std::move(handler), w](auto&& res) mutable { handler(std::move(*w)); } );
+      return w->begin([handler = std::move(handler), w](error_code_t e, auto&& res) mutable { handler(e, std::move(*w)); } );
     };
 
     return boost::asio::async_initiate<
-      TransactionHandlerT, void(txn_t)>(
+      TransactionHandlerT, void(error_code_t, txn_t)>(
           initiation, handler);
+  }
+  awaitable<bool> is_alive()
+  {
+      if (!socket_.is_open())
+          co_return false;
+
+      boost::system::error_code ec;
+
+      socket_.non_blocking(true, ec);
+      std::size_t n = socket_.receive(asio::buffer((char*)nullptr, 0),
+                                    asio::ip::tcp::socket::message_peek, ec);
+
+      if (ec == asio::error::eof) {
+          // Peer performed an orderly shutdown
+          co_return false;
+      }
+      if (ec == asio::error::connection_reset || ec == asio::error::connection_aborted) {
+          co_return false;
+      }
+      if (ec && ec != asio::error::would_block && ec != asio::error::try_again) {
+          // Some other fatal error
+          co_return false;
+      }
+
+      try {
+        co_await socket().async_wait(std::decay_t<socket_t>::wait_read, 
+                                     asio::cancel_after(50ms, use_awaitable));
+      } catch (boost::system::system_error& e) {
+        if (e.code().value() != 125) {
+          std::cerr << "sysexc " << e.what() << ' ' << e.code();
+          co_return false;
+        }
+      }
+      try {
+        co_await socket().async_wait(std::decay_t<socket_t>::wait_error, 
+                                     asio::cancel_after(50ms, use_awaitable));
+      } catch (boost::system::system_error& e) {
+        if (e.code().value() != 125) {
+          std::cerr << std::format("sysexc {} {}", e.what(), e.code().message());
+          co_return false;
+        }
+      }
+      try {
+        if (PQconsumeInput(underlying_handle()) != 1) { // read from socket into PQ lib buffer; should not affect other calls
+          std::cerr << std::format("consume input failed...: '{}'", connection().last_error_message());
+          co_return false;
+        }
+        else
+        {
+          co_return true;
+        }
+      } catch (boost::system::system_error& e) {
+        if (e.code().value() == 125) co_return true;
+        std::cerr << "isalive sysexc " << e.what() << ' ' << e.code();
+        co_return false;
+      } catch (std::exception& e) {
+        std::cerr << "isalive exc " << e.what();
+        co_return false;
+      }
+      co_return true; // Looks OK locally. Not a guarantee if the peer died silently.
   }
 
   PGconn* underlying_handle() { return c_; }
@@ -133,7 +233,7 @@ private:
 private:
   socket_t socket_;
 
-  PGconn* c_;
+  PGconn* c_ = nullptr;
 };
 
 }

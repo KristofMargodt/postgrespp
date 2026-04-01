@@ -20,10 +20,8 @@ class socket_operations {
 public:
   using result_t = result;
 
-private:
-  using error_code_t = boost::system::error_code;
-
 protected:
+  using error_code_t = boost::system::error_code;
   using derived_t = DerivedT;
 
 protected:
@@ -40,22 +38,32 @@ protected:
   template <class ResultCallableT>
   auto handle_exec(ResultCallableT&& handler) {
     auto initiation = [this](auto&& handler) {
+      try
+      { 
       auto wrapped_handler = [handler = std::move(handler),
-           r = std::make_shared<result>(nullptr)](auto&& res) mutable {
-        if (!res.done()) {
+           r = std::make_shared<result>(nullptr)](error_code_t e, auto&& res) mutable {
+        if (e) { 
+          handler(e, std::move(*r));
+        } else if (!res.done()) {
           if (!r->done()) throw std::runtime_error{"expected one result"};
           *r = std::move(res);
         } else {
-          handler(std::move(*r));
+          handler(e, std::move(*r));
         }
       };
 
       on_write_ready({});
       wait_read_ready(std::move(wrapped_handler));
+      }
+      catch (std::exception &e)
+      {
+        std::cerr << "socket_operations::handle_exec failed: " << e.what();
+        handler(error_code_t{boost::asio::error::network_down, boost::system::system_category()}, result{nullptr});
+      }
     };
 
     return boost::asio::async_initiate<
-      ResultCallableT, void(result_t)>(
+      ResultCallableT, void(error_code_t, result_t)>(
           initiation, handler);
   }
 
@@ -67,7 +75,7 @@ protected:
     };
 
     return boost::asio::async_initiate<
-      ResultCallableT, void(result_t)>(
+      ResultCallableT, void(error_code_t, result_t)>(
           initiation, handler);
   }
 
@@ -90,16 +98,16 @@ private:
   void on_read_ready(ResultCallableT&& handler, const error_code_t& ec) {
     while (true) {
       if (PQconsumeInput(derived().connection().underlying_handle()) != 1) {
-        // TODO: convert this to some kind of error via the callback
-        throw std::runtime_error{
-          "consume input failed: " + std::string{derived().connection().last_error_message()}};
+        std::cerr << "consume input failed: " << derived().connection().last_error_message() << '\n';
+        handler(error_code_t{boost::asio::error::network_down, boost::system::system_category()}, result{nullptr});
+        break;
       }
 
       if (!PQisBusy(derived().connection().underlying_handle())) {
         const auto pqres = PQgetResult(derived().connection().underlying_handle());
 
         result res{pqres};
-        handler(std::move(res));
+        handler(ec, std::move(res));
 
         if (!pqres) {
           break;

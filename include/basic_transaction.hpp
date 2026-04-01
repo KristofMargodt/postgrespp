@@ -19,6 +19,7 @@ public:
   using query_t = query;
   using connection_t = ::postgrespp::basic_connection;
   using statement_name_t = std::string;
+  using error_code_t = boost::system::error_code;
 
 private:
   using result_t = typename socket_operations<basic_transaction<RWT, IsolationT>>::result_t;
@@ -26,14 +27,13 @@ private:
 public:
   basic_transaction(connection_t& c)
     : c_{c}
-    , done_{false} {
+    , state_{created} {
   }
 
   basic_transaction(const basic_transaction&) = delete;
   basic_transaction(basic_transaction&& rhs) noexcept
     : c_{std::move(rhs.c_)}
-    , done_{std::move(rhs.done_)} {
-    rhs.done_ = true;
+    , state_{std::exchange(rhs.state_, done)} {
   }
 
   basic_transaction& operator=(const basic_transaction&) = delete;
@@ -41,7 +41,7 @@ public:
     using std::swap;
 
     swap(c_, rhs.c_);
-    swap(done_, rhs.done_);
+    swap(state_, rhs.state_);
   }
 
   /**
@@ -50,12 +50,20 @@ public:
    * will do a sync rollback.
    */
   ~basic_transaction() {
-    if (!done_) {
+    if (state_ == active) {
       const result_t res{PQexec(connection().underlying_handle(), "ROLLBACK")};
-      assert(result_t::status_t::COMMAND_OK == res.status());
+      assert(result_t::status_t::COMMAND_OK == res.status() ||
+             result_t::status_t::FATAL_ERROR == res.status()); // is ok in case the network is done
     }
   }
   
+  template <class ResultCallableT>
+  auto begin(ResultCallableT&& handler) {
+    return async_exec("BEGIN", [handler = std::move(handler), this](error_code_t e, result res) mutable {
+      if (!e) state_ = active; 
+      handler(e, res); 
+    });
+  }
   /// See \ref async_exec(query, handler, params) for more.
   template <class ResultCallableT>
   auto async_exec(const query_t& query, ResultCallableT&& handler) {
@@ -134,7 +142,7 @@ public:
    */
   template <class ResultCallableT>
   auto async_exec_all(const query_t& query, ResultCallableT&& handler) {
-    assert(!done_);
+    assert(state_ != done);
 
     const auto res = PQsendQuery(connection().underlying_handle(),
         query.c_str());
@@ -155,43 +163,48 @@ public:
   template <class ResultsCallableT> // void(std::vector<result> )
   auto async_exec_multi(const query_t& query, ResultsCallableT&& handler) {
     auto initiation = [this, &query](auto&& handler) mutable {
-      async_exec_all(query, [handler=std::move(handler), Results = std::vector<result>{}](result_t res) mutable {
-        if (!res.done()) {
-          Results.push_back(std::move(res));
-        } else {
-          handler(std::move(Results));
-        }
-      });
+      try{
+        async_exec_all(query, [handler=std::move(handler), Results = std::vector<result>{}](auto e, result_t res) mutable {
+          if (!res.done()) {
+            Results.push_back(std::move(res));
+          } else {
+            handler(e, std::move(Results));
+          }
+        });
+      } catch (std::exception e) {
+        handler(error_code_t{boost::asio::error::network_down, boost::system::system_category()}, 
+                std::vector<result>{});
+      }
     };
 
-    return boost::asio::async_initiate<ResultsCallableT, void(std::vector<result_t>)>(initiation, std::move(handler));
+    return boost::asio::async_initiate<ResultsCallableT, void(error_code_t, std::vector<result_t>)>(initiation, std::move(handler));
   }
 
   template <class ResultCallableT>
   auto commit(ResultCallableT&& handler) {
     const auto initiation = [this](auto&& handler) {
-      async_exec("COMMIT", [this, handler = std::move(handler)](auto&& res) mutable {
-          done_ = true;
-          handler(std::forward<decltype(res)>(res));
+      async_exec("COMMIT", [this, handler = std::move(handler)](error_code_t e, auto&& res) mutable {
+          state_ = done;
+          handler(e, std::forward<decltype(res)>(res));
         });
     };
 
     return boost::asio::async_initiate<
-      ResultCallableT, void(result_t)>(
+      ResultCallableT, void(error_code_t, result_t)>(
           initiation, handler);
   }
 
   template <class ResultCallableT>
   auto rollback(ResultCallableT&& handler) {
     const auto initiation = [this](auto&& handler) {
-      async_exec("ROLLBACK", [this, handler = std::move(handler)](auto&& res) mutable {
-          done_ = true;
-          handler(std::forward<decltype(res)>(res));
+      async_exec("ROLLBACK", [this, handler = std::move(handler)](error_code_t e, auto&& res) mutable {
+          state_ = done;
+          handler(e, std::forward<decltype(res)>(res));
         });
     };
 
     return boost::asio::async_initiate<
-      ResultCallableT, void(result_t)>(
+      ResultCallableT, void(error_code_t, result_t)>(
           initiation, handler);
   }
 
@@ -205,7 +218,7 @@ private:
   auto async_exec_2(const query_t& query, ResultCallableT&& handler,
       const char* const* value_arr, const int* size_arr, const int* type_arr,
       std::size_t num_values) {
-    assert(!done_);
+    assert(state_ != done);
 
     const auto res = PQsendQueryParams(connection().underlying_handle(),
         query.c_str(),
@@ -217,8 +230,9 @@ private:
         static_cast<int>(field_type::BINARY));
 
     if (res != 1) {
-      throw std::runtime_error{
-        "error executing query '" + query + "': " + std::string{connection().last_error_message()}};
+      std::cerr << "error executing query '" << query << "': " << connection().last_error_message();
+      handler(error_code_t{boost::asio::error::network_down, boost::system::system_category()}, result{nullptr});
+      return;
     }
 
     return this->handle_exec(std::forward<ResultCallableT>(handler));
@@ -228,7 +242,7 @@ private:
   auto async_exec_prepared_2(const statement_name_t& statement_name,
       ResultCallableT&& handler, const char* const* value_arr,
       const int* size_arr, const int* type_arr, std::size_t num_values) {
-    assert(!done_);
+    assert(state_ != done);
 
     const auto res = PQsendQueryPrepared(connection().underlying_handle(),
         statement_name.c_str(),
@@ -248,7 +262,12 @@ private:
 
 private:
   std::reference_wrapper<connection_t> c_;
-  bool done_;
+  enum
+  {
+    created, // before BEGIN statement
+    active, // after BEGIN statement
+    done // after COMMIT or ROLLBACK statement
+  } state_;
 };
 
 }
