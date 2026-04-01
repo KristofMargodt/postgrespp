@@ -14,6 +14,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 using namespace std::literals;
@@ -21,13 +22,25 @@ using boost::asio::use_awaitable;
 
 namespace postgrespp {
 
+namespace asio = boost::asio;
+template<typename T>
+using awaitable = asio::awaitable<T, asio::any_io_executor>;
+
 template <class, class>
 class basic_transaction;
 
 class result;
 
+struct notification
+{
+  std::string_view channel;
+  std::string_view payload;
+  int backend_pid;
+};
+
 class basic_connection : public socket_operations<basic_connection> {
   friend class socket_operations<basic_connection>;
+  using socket_ops = socket_operations<basic_connection>;
 public:
   using io_context_t = boost::asio::io_context;
   using result_t = result;
@@ -153,6 +166,70 @@ public:
       TransactionHandlerT, void(error_code_t, txn_t)>(
           initiation, handler);
   }
+
+  template <typename CallableT>
+  auto listen(std::string_view channelName, CallableT&& handler) {
+
+    auto initiation = [this, channelName](auto&& completion_handler)
+    {
+      // LOGF_INFO("listen {}", channelName);
+      auto query = std::format("LISTEN {};", channelName);
+      const auto res = PQsendQuery(connection().underlying_handle(),
+          query.c_str());
+
+      if (res != PGRES_COMMAND_OK) {
+        throw std::runtime_error{
+          "error executing query: " + std::string{connection().last_error_message()}};
+      }
+
+      socket_ops::handle_exec([handler = std::move(completion_handler)](error_code_t ec, result res) mutable
+      {
+        return handler(ec);
+      });
+    };
+    return boost::asio::async_initiate<CallableT, void(error_code_t)>(initiation, handler);
+  }
+
+  template <typename NotifCallableT>
+  auto await_notification(NotifCallableT&& handler)
+  {
+    using notify_ptr = std::unique_ptr<PGnotify, void (*)(void *)>;
+    auto initiation = [this](auto&& handler) {
+      auto notif = notify_ptr{PQnotifies(underlying_handle()), PQfreemem};
+      if (notif) { 
+        notification n{notif->relname, notif->extra, notif->be_pid};
+        handler(error_code_t{}, n);
+        return;
+      }
+
+      auto WrappedHdlr = [handler=std::move(handler), this](const error_code_t& ec) mutable
+      {
+        if (ec)
+        {
+          if (ec.value() != boost::asio::error::operation_aborted) std::cerr << std::format("notif ec: {} {}", ec.message(), ec.value());
+          return handler(ec, notification{});          
+        }
+        else if (PQconsumeInput(underlying_handle()) != 1) {
+          std::cout << std::format("consume input failed...: {}", connection().last_error_message());
+          handler(error_code_t{boost::asio::error::network_down, boost::system::system_category()}, notification{});
+        }
+        else
+        {
+          auto notif = notify_ptr{PQnotifies(underlying_handle()), PQfreemem};
+          if (!notif) { return handler(error_code_t{boost::asio::error::network_down}, notification{}); }
+          notification n{notif->relname, notif->extra, notif->be_pid};
+          return handler(ec, n);
+        }
+
+      };
+
+      socket().async_wait(std::decay_t<socket_t>::wait_read, std::move(WrappedHdlr));
+    };
+
+    return boost::asio::async_initiate<NotifCallableT, void(boost::system::error_code, notification)>(
+          initiation, std::move(handler));
+  }
+
   awaitable<bool> is_alive()
   {
       if (!socket_.is_open())
