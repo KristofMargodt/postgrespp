@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <stdexcept>
+#include <iostream>
 
 namespace postgrespp {
 

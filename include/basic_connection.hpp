@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <iostream>
 
 using namespace std::literals;
 using boost::asio::use_awaitable;
