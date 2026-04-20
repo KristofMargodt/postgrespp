@@ -40,6 +40,7 @@ public:
   std::chrono::utc_clock::time_point from_binary(const char* data, std::size_t length) {
     auto SystemTime = pre_decoder_t{}.from_binary(data, length);
     using namespace std::chrono;
+    if (SystemTime >= system_clock::time_point::max() - 1h) return utc_clock::time_point::max(); // reason 1h: the check should be 1us + amount of leap seconds at max, but that may change in the future, so rounding to 1h which is safe (supporting times within 1h of max is also not a use case)
     return utc_clock::from_sys(SystemTime);
   }
 };
