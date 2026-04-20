@@ -230,9 +230,8 @@ private:
         static_cast<int>(field_type::BINARY));
 
     if (res != 1) {
-      std::cerr << "error executing query '" << query << "': " << connection().last_error_message();
-      handler(error_code_t{boost::asio::error::network_down, boost::system::system_category()}, result{nullptr});
-      return;
+      throw std::runtime_error{
+        "error executing query '" + query + "': " + std::string{connection().last_error_message()}};
     }
 
     return this->handle_exec(std::forward<ResultCallableT>(handler));
