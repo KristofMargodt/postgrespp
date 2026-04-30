@@ -228,7 +228,7 @@ public:
     };
 
     return boost::asio::async_initiate<NotifCallableT, void(boost::system::error_code, notification)>(
-          initiation, std::move(handler));
+          initiation, handler);
   }
 
   awaitable<bool> is_alive()
